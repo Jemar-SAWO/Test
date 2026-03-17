@@ -477,8 +477,6 @@ boolean back = false;
 byte buttonOnPressedappui_data = 3;
 
 bool initialized = false;
-byte E11_data;
-byte E12_data;
 
 // Define a constant for the update interval in microseconds
 
@@ -616,7 +614,7 @@ void setup() {
   if (tempSet_read == 255) tempSet_read = 80;
   if (HumidSet_read == 255) HumidSet_read = 50;
   if (sessionTime_data == 255) sessionTime_data = 21600;
-
+  if (backtoyou_data == 255) backtoyou_data = false;
 
 
   // ICSC.registerCommand('new', &onoff);
@@ -643,8 +641,6 @@ void setup() {
   ICSC.registerCommand('E', &lighttoyou);
   ICSC.registerCommand('TT', &targettemp);
   ICSC.registerCommand('ct', &sessionTime);
-  ICSC.registerCommand('N', &nowifi);
-  ICSC.registerCommand('j', &nonetwork);
   save_steamerOff_PRERUN = steamerOff_PRERUN;
   //-------------------------------------------------------------------------------------------------------
   ICSC.send(5, 'A', 1, (char *)&advUser_data);
@@ -659,12 +655,9 @@ void sendtime() {
     lastMillis = currentMillis;
     down;
     tempSet_on;
-    buttonOnPressed;
-    lightActive;
     ICSC.send(9, 'H', 5, (char *)&down);
     ICSC.send(9, 'tt', 2, (char *)&tempSet_on);
-    ICSC.send(5, 'W', 1, (char *)&buttonOnPressed);
-    ICSC.send(0, 'l', 1, (char *)&lightActive);
+
     // ICSC.send(9, 'M', 5, (char *)&mm);
     // ICSC.send(9, 'S', 5, (char *)&ss);
   }
@@ -672,7 +665,7 @@ void sendtime() {
 
 
 ISR(TIMER1_COMPA_vect) {
-
+  sendtime();
   if (enableUnlimitedTime == 0 && remoteOn_data && buttonOnPressed == 2) {
     down--;
   }
@@ -708,7 +701,6 @@ ISR(TIMER1_COMPA_vect) {
       fanTimeMillis++;
     }
   }
-  sendtime();
 }
 
 void lighttoyou(unsigned char source, char command, unsigned char length, char *data) {
@@ -781,6 +773,7 @@ void lighttoyou(unsigned char source, char command, unsigned char length, char *
 // }
 void sessionTime(unsigned char source, char command, unsigned char length, char *data) {
   sessionTime_data = *(unsigned long *)data;
+  EEPROM.write(28, sessionTime_data);
   if (sessionTime_data != prev_sessionTime_data) {
     prev_sessionTime_data = sessionTime_data;
     intervalBuz = 300;
@@ -788,7 +781,6 @@ void sessionTime(unsigned char source, char command, unsigned char length, char 
     savePoint = 1;
     nextSession = 0;
     savePoints[0] = 1;
-
     down = sessionTime_data;
     ICSC.send(9, 'H', 5, (char *)&down);
     if (down > 300) {
@@ -805,55 +797,58 @@ void sessionTime(unsigned char source, char command, unsigned char length, char 
 
 
 void backtoyou(unsigned char source, char command, unsigned char length, char *data) {
+  delay(500);
+  if (initialized) {
+    backtoyou_data = *data;
 
-  backtoyou_data = *data;
+    EEPROM.write(29, backtoyou_data);
+    unsigned long delayActivateMillis[3];
 
-  unsigned long delayActivateMillis[3];
-
-  if (ERROR1_data != 7) {
-    if (remoteOn_data != 0) {
-      if (downbtn == LOW) {
-        if ((backtoyou_data == true) || (backtoyou_data == false)) {
-          if (powerbtnStop == false && millis() - delayActivateMillis[0] > 100) {
-            if (buttonOnPressed == 1) {
-              if (errorTrue == false) {
-                if (preRunSet == 0 && bothDisplay == false) {
-                  if (ERROR1_data != 9)
-                    buttonOnPressed = 2;
-                  else {
-                    displayFanOffMode = 2;
-                    pzDetect = 1;
-                    intervalBuz = 100;
+    if (ERROR1_data != 7) {
+      if (remoteOn_data != 0) {
+        if (downbtn == LOW) {
+          if ((backtoyou_data == true) || (backtoyou_data == false)) {
+            if (powerbtnStop == false && millis() - delayActivateMillis[0] > 100) {
+              if (buttonOnPressed == 1) {
+                if (errorTrue == false) {
+                  if (preRunSet == 0 && bothDisplay == false) {
+                    if (ERROR1_data != 9)
+                      buttonOnPressed = 2;
+                    else {
+                      displayFanOffMode = 2;
+                      pzDetect = 1;
+                      intervalBuz = 100;
+                    }
                   }
-                }
-                if (preRunSet == 1)
-                  preRunSet = 0;
+                  if (preRunSet == 1)
+                    preRunSet = 0;
 
-                if (preRunSet_running == 1) {
-                  preRunSet = 0;
-                  preRunSet_running = 0;
-                }
-              } else {
+                  if (preRunSet_running == 1) {
+                    preRunSet = 0;
+                    preRunSet_running = 0;
+                  }
+                } else {
 
+                  buttonOnPressed = 1;
+                  errorTrue = false;
+                  activatederror = 0;
+                  preRunSet = 0;
+                }
+              } else if (buttonOnPressed == 3)
                 buttonOnPressed = 1;
-                errorTrue = false;
-                activatederror = 0;
-                preRunSet = 0;
+              else {  //buttonOnPressed==2
+                if (steamerOff == 1) {
+                  buttonOnPressed = 3;
+                  DryingTime = 2400;
+                } else
+                  buttonOnPressed = 1;
               }
-            } else if (buttonOnPressed == 3)
-              buttonOnPressed = 1;
-            else {  //buttonOnPressed==2
-              if (steamerOff == 1) {
-                buttonOnPressed = 3;
-                DryingTime = 2400;
-              } else
-                buttonOnPressed = 1;
+              powerbtnStop = true;
             }
-            powerbtnStop = true;
+          } else {
+            delayActivateMillis[0] = millis();
+            powerbtnStop = false;
           }
-        } else {
-          delayActivateMillis[0] = millis();
-          powerbtnStop = false;
         }
       }
     }
@@ -1046,14 +1041,6 @@ void ERROR1(unsigned char src, char command, unsigned char len, char *data) {
     buttonOnPressed = 1;
   }
 }
-void nowifi(unsigned char src, char command, unsigned char len, char *data) {
-
-  E11_data = *data;
-}
-void nonetwork(unsigned char src, char command, unsigned char len, char *data) {
-
-  E12_data = *data;
-}
 unsigned long tenSecondsSendMillis;
 unsigned long delayActivateMillis[3];
 
@@ -1165,6 +1152,7 @@ void loop() {
     if (VERSION_data >= 7) {
       if (buttonOnPressed != powerStateOfBoard) {
         ICSC.send(5, 'W', 1, (char *)&buttonOnPressed);
+
 
         powerStateOfBoard = buttonOnPressed;
       }
@@ -1302,7 +1290,16 @@ void loop() {
       laststeamerOff = steamerOff;
     }
   }
+  if (!initialized) {
+    backtoyou_data = false;  // Force OFF
+  }
 
+  // (rest of your existing loop...)
+
+  // After first successful HTTP PUT or after X seconds, unlock
+  if (!initialized && millis() > 5000) {  // 5s after boot
+    initialized = true;
+  }
 
   if (combiDetect_data == 3) {
     steamerOff = 0;
@@ -2204,164 +2201,94 @@ void lightFunction() {
 
 
 void bothbtn() {
-
-  // =====================================
-  // BOTH BUTTON HOLD DETECTION (1.5 sec)
-  // =====================================
   if (powerbtn == HIGH && downbtn == HIGH && keylocklock == 0) {
-
-    if (!bothActive) {
+    if (bothActive == false) {
       bothMillis = millis();
       displayOnce = false;
       bothActive = true;
     }
-
-    if ((millis() - bothMillis >= 1500) && !displayOnce) {
-
-      noToShortPress = 0;
-
-      bothDisplay = true;
-
-      bothChange = !bothChange;
-
-      EEPROM.write(1, bothChange);
-
-      prevbothDisplay = millis();
-
-      displayOnce = true;
+    if (millis() - bothMillis >= 1500) {
+      if (displayOnce == false) {
+        noToShortPress = 0;
+        bothDisplay = true;
+        bothChange = !bothChange;
+        EEPROM.write(1, bothChange);
+        prevbothDisplay = millis();
+        displayOnce = true;
+      }
     }
-
   } else {
     bothActive = false;
   }
 
-
-  // =====================================
-  // SCALE CHANGE DISPLAY (Highest priority)
-  // =====================================
-  if (bothDisplay) {
-
-    if (millis() - prevblinkBoth >= 500) {
+  if (bothDisplay == true) {
+    unsigned long blinkBoth = millis();
+    if (blinkBoth - prevblinkBoth >= 500) {
       blinkBothStart = !blinkBothStart;
-      prevblinkBoth = millis();
+
+      prevblinkBoth = blinkBoth;
     }
-
-    if (blinkBothStart) {
-
+    if (blinkBothStart == 1) {
       if (bothChange == 1) {
         displayFah();
+        // Tempscale = 1;
+        // EEPROM.write(19, Tempscale);
+        // ICSC.send(9, 'TS', 1, (char *)&Tempscale);
+
+
+
+
+
       } else {
         displayCel();
+        // Tempscale = 2;
+        // EEPROM.write(19, Tempscale);
+        // ICSC.send(9, 'TS', 1, (char *)&Tempscale);
       }
 
-    } else {
+    } else
       displayOn();
-    }
-
 
     if (millis() - prevbothDisplay >= 2000) {
-
       bothDisplay = false;
-
       noToShortPress = 1;
     }
+  } else {
 
-    return;
-  }
-
-
-  // =====================================
-  // FAN OFF MODE DISPLAY
-  // =====================================
-  if (displayFanOffMode != 0) {
-
-    if (millis() - fanOffModeMillis > 1500) {
-
-      displayFanOffMode = 0;
-
-      smdCount = 0;
-      smdCount2 = 0;
+    if (displayFanOffMode != 0) {
+      if (millis() - fanOffModeMillis > 1500) {
+        displayFanOffMode = 0;
+        smdCount = 0;
+        smdCount2 = 0;
+      }
     }
-  }
-
-
-  if (displayFanOffMode == 1) {
-
-    if (fanOff == 1)
-      displayOn();
-    else
-      displayOff();
-
-    return;
-  }
-
-  else if (displayFanOffMode == 2) {
-
-    oPEn();
-
-    return;
-  }
-
-  else if (displayFanOffMode == 3) {
-
-    if (smdNTC_data > 99)
-      displayNumber3(smdNTC_data);
-    else
-      displayNumber(smdNTC_data);
-
-    return;
-  }
-
-  else if (displayFanOffMode == 4) {
-
-    if (hiTempSmd_data > 99)
-      displayNumber3(hiTempSmd_data);
-    else
-      displayNumber(hiTempSmd_data);
-
-    return;
-  }
-
-  else if (displayFanOffMode == 5) {
-
-    displayKLock();
-
-    return;
-  }
-
-
-
-  // =====================================
-  // ERROR DISPLAY PRIORITY
-  // E11 = highest
-  // E12 = second
-  // =====================================
-  static unsigned long lastRun = 0;
-
-  const unsigned long interval = 5;
-
-  if (millis() - lastRun >= interval) {
-
-    lastRun = millis();
-
-    if (E11_data != 1) {
-
-      E11();
-    }
-
-    else if (E12_data != 1) {
-
-      E12();
-    }
-
+    if (displayFanOffMode == 1) {
+      if (fanOff == 1)
+        displayOn();
+      else
+        displayOff();
+    } else if (displayFanOffMode == 2)
+      oPEn();
+    else if (displayFanOffMode == 3) {
+      if (smdNTC_data > 99)
+        displayNumber3(smdNTC_data);
+      else
+        displayNumber(smdNTC_data);
+    } else if (displayFanOffMode == 4) {
+      if (hiTempSmd_data > 99)
+        displayNumber3(hiTempSmd_data);
+      else
+        displayNumber(hiTempSmd_data);
+    } else if (displayFanOffMode == 5)
+      displayKLock();
     else {
 
-      displayColon();  // NORMAL DISPLAY
+      displayColon();
+      fanOffModeMillis = millis();
+
+      // startup();
     }
   }
-
-
-  fanOffModeMillis = millis();
 }
 // void startup() {
 //   static unsigned long lastMillis = 0;
@@ -3168,7 +3095,12 @@ void off() {
             hh = ((plusData / 3600) % 100);
             mm = ((plusData / 60) % 60);
             ss = plusData % 60;
+
             down = plusData;
+
+
+
+
             preRunSet_running = 0;
             preRunSet = 0;
             if (steamerOff_PRERUN == 0) {
@@ -4054,7 +3986,6 @@ void off() {
               }
             } else if (displayDetected == 2)
               displayFill();
-
             else if (displayDetected == 3)
               displayDry();
             else
@@ -4276,88 +4207,6 @@ void oPEn() {
         PORTC &= ~(1 << 0);  //g
         break;
     }
-    delayMicroseconds(brightness);
-    noDisplay7Seg();
-  }
-}
-void E11() {
-  for (byte digit = 0; digit < 4; digit++) {
-    switch (digit) {
-
-      // blank (1st digit)
-      case 0:
-        PORTC &= ~(1 << 2);  // col1
-        break;
-
-      // E (2nd digit)
-      case 1:
-        PORTC &= ~(1 << 3);  // col2
-        PORTB &= ~(1 << 0);  // a
-        PORTB &= ~(1 << 3);  // d
-        PORTB &= ~(1 << 4);  // e
-        PORTB &= ~(1 << 5);  // f
-        PORTC &= ~(1 << 0);  // g
-        break;
-
-      // 1 (3rd digit)
-      case 2:
-        PORTC &= ~(1 << 4);  // col3
-        PORTB &= ~(1 << 1);  // b
-        PORTB &= ~(1 << 2);  // c
-        break;
-
-      // 1 (4th digit)
-      case 3:
-        PORTC &= ~(1 << 5);  // col4
-        PORTB &= ~(1 << 1);  // b
-        PORTB &= ~(1 << 2);  // c
-        break;
-    }
-
-    delayMicroseconds(brightness);
-    noDisplay7Seg();
-  }
-}
-
-
-void E12() {
-  for (byte digit = 0; digit < 4; digit++) {
-
-    switch (digit) {
-
-      // blank (1st digit)
-      case 0:
-        PORTC &= ~(1 << 2);  // col1
-        break;
-
-      // E (2nd digit)
-      case 1:
-        PORTC &= ~(1 << 3);  // col2
-        PORTB &= ~(1 << 0);  // a
-        PORTB &= ~(1 << 3);  // d
-        PORTB &= ~(1 << 4);  // e
-        PORTB &= ~(1 << 5);  // f
-        PORTC &= ~(1 << 0);  // g
-        break;
-
-      // 1 (3rd digit)
-      case 2:
-        PORTC &= ~(1 << 4);  // col3
-        PORTB &= ~(1 << 1);  // b
-        PORTB &= ~(1 << 2);  // c
-        break;
-
-      // 2 (4th digit)
-      case 3:
-        PORTC &= ~(1 << 5);  // col4
-        PORTB &= ~(1 << 0);  // a
-        PORTB &= ~(1 << 1);  // b
-        PORTB &= ~(1 << 3);  // d
-        PORTB &= ~(1 << 4);  // e
-        PORTC &= ~(1 << 0);  // g
-        break;
-    }
-
     delayMicroseconds(brightness);
     noDisplay7Seg();
   }
